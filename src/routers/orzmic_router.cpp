@@ -168,6 +168,8 @@ void self::router::OrzmicRouter::router(){
 					}
 				}
 
+				music["Additional"] = json::parse(extra_content);
+
 				result.push_back(music);
 			};
 

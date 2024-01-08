@@ -1,0 +1,16 @@
+log:
+  logger-name: "daily_logger"
+  filename: "logs/daily.txt"
+  hour: 2
+  minute: 30
+db:
+  sqlite:
+    orzmic: 
+      song: "orzmic_song.db"
+      record: "orzmic_records.db"
+    local: "local.db"
+server:
+  host: "0.0.0.0"
+  port: 80
+  thread-num: 0
+  authorization: "wJ7yF3fM8wS0gN7vS9nB2sY2rJ1zO2xY"

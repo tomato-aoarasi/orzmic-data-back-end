@@ -15,6 +15,7 @@ namespace self{
 		private:
 			std::shared_ptr<CrowApplication> m_app;
 			void replaceStr(std::string&);
+			void updateSearch(int32_t);
 			define::AccessControl getAccessControl(std::string_view);
 		public:
 			explicit OrzmicRouter(std::shared_ptr<CrowApplication>);

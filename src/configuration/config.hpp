@@ -24,9 +24,20 @@
 #include "common/log_system.hpp"
 
 namespace Config {
-	inline void initialized(void) {
+	inline bool initializeGlobalVariables() {
+		if (global::config_yaml["search-engine"]) {
+			if (global::config_yaml["search-engine"]["meilisearch"]) {
+				global::search::isOpen = true;
+				global::search::meiliAuth = global::config_yaml["search-engine"]["meilisearch"]["authorization"].as<std::string>();
+				global::search::meiliURL = global::config_yaml["search-engine"]["meilisearch"]["url"].as<std::string>();
+			}
+			if (global::config_yaml["search-engine"]["elasticsearch"]) {
+				// Handle Elasticsearch
+			}
+		}
+		return true;
 	}
-}
+};
 
 #include "common/utils.hpp"
 

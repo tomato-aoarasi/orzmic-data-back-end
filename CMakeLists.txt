@@ -3,9 +3,10 @@
 #
 cmake_minimum_required (VERSION 3.12)
 
-# set(VCPKG_ROOT "/opt/vcpkg")
-# set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
-# CACHE STRING "Vcpkg toolchain file")
+# 启用vcpkg
+set(VCPKG_ROOT "/home/software/vcpkg")
+set(CMAKE_TOOLCHAIN_FILE "${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+CACHE STRING "Vcpkg toolchain file")
 link_directories(/usr/lib)
 link_directories(/usr/local/lib)
 link_directories(/usr/local/lib/x86_64-linux-gnu)
@@ -32,7 +33,7 @@ set(CMAKE_C_STANDARD 17)
 
 find_package(PkgConfig REQUIRED)
 find_package(nlohmann_json REQUIRED)
-find_package(cpprestsdk REQUIRED)
+find_package(cpprestsdk CONFIG REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
@@ -78,8 +79,8 @@ unset(sources_glob)
 unset(sources)
 
 # 动态库链接
-target_link_libraries(${PROJECT_NAME} PRIVATE yaml-cpp spdlog::spdlog nlohmann_json::nlohmann_json 
-fmt::fmt sqlite3 cpprestsdk::cpprest Crow::Crow)
+target_link_libraries(${PROJECT_NAME} PRIVATE yaml-cpp spdlog::spdlog nlohmann_json::nlohmann_json cpprestsdk::cpprest
+fmt::fmt sqlite3 Crow::Crow)
 
 message(G:${CMAKE_C_COMPILER_VERSION},GXX:${CMAKE_CXX_COMPILER_VERSION},CXX STANDARD:${CMAKE_CXX_STANDARD})
 message(final)

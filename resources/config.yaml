@@ -5,10 +5,14 @@ log:
   minute: 30
 db:
   sqlite:
-    orzmic: 
+    orzmic:
       song: "orzmic_song.db"
       record: "orzmic_records.db"
     local: "local.db"
+search-engine:
+    meilisearch:
+        url: "http://127.0.0.1:7700"
+        authorization: "2XqrrfRWAp0zGyfrqXGblrsrIJ18dIJ1OgU3fBEEHHs"
 server:
   host: "0.0.0.0"
   port: 80

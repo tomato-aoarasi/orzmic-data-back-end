@@ -9,6 +9,7 @@
 
 inline bool __init__{ [] {
 	LogSystem::initialized();
+	Config::initializeGlobalVariables();
 	return true;
 }() };
 

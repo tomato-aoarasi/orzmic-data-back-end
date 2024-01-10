@@ -306,6 +306,7 @@ void self::router::OrzmicRouter::router() {
 				if (key.empty())throw self::HTTPException("'key' is empty", 400);
 				int32_t music_id{};
 				this->replaceStr(key);
+				println(key);
 				std::string sql{ "select music_id from alias where alias = \"" + key + "\" " };
 
 				if (is_nocase) {
@@ -505,6 +506,8 @@ void self::router::OrzmicRouter::router() {
 				});
 			});
 	}
+
+
 }
 
 /*

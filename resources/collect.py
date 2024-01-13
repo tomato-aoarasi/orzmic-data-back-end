@@ -27,10 +27,13 @@ class ORZMICSQL:
                 else:
                     chart_insert_sql += f""","{chart['ChartDesigner'].replace('"', '""')}","{chart['Difficulty'].replace('"', '""')}",{chart['NoteCount']},{chart['Rating']} """
                     
-                
+                addition = '{""SpecialLevel"": [null,null,null,null]}'
+                addition= addition.replace('\\"', '""')
+
             insert_sql = f'''INSERT INTO songs VALUES ({data["MusicID"]}, "{data["FileName"].replace('"', '""')}", "{data["Title"].replace('"', '""')}", {data["Lockhint"]},
 {int(data["InitialUnlock"])}, {int(data["Watermark"])}, "{data["Artist"].replace('"', '""')}", "{data["CoverPainter"].replace('"', '""')}", "{data["BPMRange"].replace('"', '""')}",
-{data["AudioPreviewFrom"]}, {data["AudioPreviewTo"]}{chart_insert_sql})'''.replace('\\"', '""')
+{data["AudioPreviewFrom"]}, {data["AudioPreviewTo"]}{chart_insert_sql},"{addition}")'''.replace('\\"', '""')
+            print(insert_sql)
             conn.execute(insert_sql)
             conn.commit()
             print(f"{title}({musicid}) 已添加至数据库")

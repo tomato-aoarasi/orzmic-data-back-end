@@ -115,10 +115,10 @@ namespace services::orzmic {
 				}
 				*/
 
-				if (score >= OVER_SCORE){
+				if (clearType <= CLEAR_TYPE_OVER_SCORE){
 					clearState = "Over Score";
 					clearStateType = 0;
-				} elif(plusType == GOLDEN) {
+				} elif(clearType == CLEAR_TYPE_FULL_COMBO) {
 					clearState = "Full Combo";
 					clearStateType = 1;
 				}/*

@@ -128,7 +128,7 @@ namespace services::orzmic {
 				 }
 				 */
 
-				constexpr int GRADE_S{ 975000 }, GRADE_A{ 940000 }, GRADE_B{ 900000 }, GRADE_C{ 850000 }, GRADE_D{ 800000 };
+				constexpr int GRADE_S{ S_SCORE }, GRADE_A{ A_SCORE }, GRADE_B{ B_SCORE }, GRADE_C{ 850000 }, GRADE_D{ 800000 };
 				if (clearType == CLEAR_TYPE_THEORETICAL_VALUE) {
 					evaluateType = 0;
 					evaluate = "ORZ";

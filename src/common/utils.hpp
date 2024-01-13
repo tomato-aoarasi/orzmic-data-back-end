@@ -142,6 +142,45 @@ namespace self{
             else return false;
         }
 
+        // base64解码的工具
+        inline static std::vector<std::uint8_t> base64Decode(const std::string& base64Str) {
+            static const std::string base64Chars =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                "abcdefghijklmnopqrstuvwxyz"
+                "0123456789+/";
+
+            std::vector<std::uint8_t> data;
+            size_t i = 0;
+            uint32_t n = 0;
+            int padding = 0;
+
+            while (i < base64Str.length()) {
+                char c = base64Str[i++];
+                if (c == '=') {
+                    padding++;
+                    continue;
+                }
+                size_t index = base64Chars.find(c);
+                if (index == std::string::npos) {
+                    continue;
+                }
+                n = (n << 6) | index;
+                if (i % 4 == 0) {
+                    data.push_back((n >> 16) & 0xFF);
+                    data.push_back((n >> 8) & 0xFF);
+                    data.push_back(n & 0xFF);
+                    n = 0;
+                }
+            }
+            if (padding > 0) {
+                n <<= padding * 6;
+                data.push_back((n >> 16) & 0xFF);
+                if (padding == 1) {
+                    data.push_back((n >> 8) & 0xFF);
+                }
+            }
+            return data;
+        }
 
         // 字符串替换工具
         inline void replaceStrAll(std::string& str, const std::string& from, const std::string& to) {
@@ -151,6 +190,21 @@ namespace self{
                 pos = str.find(from, pos + to.length());
             }
         };
+
+        // 小数比较 0等于,1大于，-1小于, accuracy是精度
+        template <typename T = const double>
+        constexpr inline std::int8_t compareDecimal(T x1, T x2, T accuracy = 1e-5) {
+            constexpr std::int8_t BIG{ 1 }, SMALL{ -1 }, EQUAL{ 0 };
+            T diff{ std::abs(x1 - x2) };
+            if (diff <= accuracy) {
+                return EQUAL;
+            } else if (x1 > x2) {
+                return BIG;
+            } else {
+                return SMALL;
+            }
+            return 0;
+        }
     }
 
     inline crow::response HandleResponseBody(std::function<std::string(void)> f) {

@@ -37,6 +37,10 @@ find_package(cpprestsdk CONFIG REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt REQUIRED)
+find_package(ZXing CONFIG REQUIRED)
+# OpenCV 
+find_package(OpenCV REQUIRED)
+include_directories(${OpenCV_INCLUDE_DIRS})
 
 # Crow框架引入
 find_package(Crow)
@@ -80,7 +84,7 @@ unset(sources)
 
 # 动态库链接
 target_link_libraries(${PROJECT_NAME} PRIVATE yaml-cpp spdlog::spdlog nlohmann_json::nlohmann_json cpprestsdk::cpprest
-fmt::fmt sqlite3 Crow::Crow)
+fmt::fmt sqlite3 Crow::Crow ZXing::Core ZXing::ZXing ${OpenCV_LIBS})
 
 message(G:${CMAKE_C_COMPILER_VERSION},GXX:${CMAKE_CXX_COMPILER_VERSION},CXX STANDARD:${CMAKE_CXX_STANDARD})
 message(final)

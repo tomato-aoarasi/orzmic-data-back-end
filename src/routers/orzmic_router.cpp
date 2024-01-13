@@ -1,7 +1,11 @@
 #include "routers/orzmic_router.hpp"
-#include "common/prevent_inject.hpp"
+#include "common/prevent_inject.hpp" 
+#include <sstream>
 #include <cpprest/http_client.h>
 #include <cpprest/json.h>
+#include "ZXing/ReadBarcode.h"
+
+constexpr int OVER_SCORE{ 1000000 },S_SCORE{ 980000 },A_SCORE{ 950000 },B_SCORE{ 900000 },FAILURE_SCORE{ 700000 };
 
 void self::router::OrzmicRouter::replaceStr(std::string& str) {
 	self::common::utils::replaceStrAll(str, "\"", "\"\"");
@@ -72,6 +76,22 @@ define::AccessControl self::router::OrzmicRouter::getAccessControl(std::string_v
 		<< accessControl.sid;
 
 	return accessControl;
+}
+
+cv::Mat self::router::OrzmicRouter::base64ToGrayScaleMat(std::string_view base64Str)
+{
+	// 将base64字符串转换为字节数组
+	std::vector<std::uint8_t> data(base64Str.begin(), base64Str.end());
+	data = self::common::utils::base64Decode(base64Str.data());
+
+	// 从字节数组中读取图像
+	cv::Mat img{ cv::imdecode(data, cv::IMREAD_GRAYSCALE) };
+	if (img.empty()) {
+		img.release();
+		throw self::HTTPException("base64 decode encountered an error", 500);
+	}
+
+	return img;
 }
 
 self::router::OrzmicRouter::OrzmicRouter(std::shared_ptr<CrowApplication> app) : m_app{ app } {
@@ -171,9 +191,9 @@ void self::router::OrzmicRouter::router() {
 				// chart_designer_hard difficulty_hard note_count_hard rating_hard
 				// chart_designer_special difficulty_special note_count_special rating_special
 
-				constexpr std::size_t max_level{ 3 };
+				constexpr std::size_t MAX_LEVEL{ 3 };
 
-				for (std::size_t index{ 0 }; index <= max_level; ++index) {
+				for (std::size_t index{ 0 }; index <= MAX_LEVEL; ++index) {
 					music["Difficulties"][index] = json{
 							{"ChartDesigner", nullptr},
 							{"Difficulty", nullptr},
@@ -181,7 +201,6 @@ void self::router::OrzmicRouter::router() {
 							{"Rating", nullptr},
 					};
 
-					define::OrzmicLevel level;
 					if (index == 0) {
 						if (chart_designer_easy) music["Difficulties"][index]["ChartDesigner"] = *chart_designer_easy;
 						if (difficulty_easy) music["Difficulties"][index]["Difficulty"] = *difficulty_easy;
@@ -291,7 +310,7 @@ void self::router::OrzmicRouter::router() {
 			json data{ json::parse(req.body) };
 			std::exchange(data, data[0]);
 
-			std::string key{""};
+			std::string key{ "" };
 			int mode{ 0 };
 			bool is_nocase{ false };
 
@@ -323,7 +342,7 @@ void self::router::OrzmicRouter::router() {
 						bool is_exist{ false };
 						global::db::orzmic << "select count(*) from alias where music_id = ?;"
 							<< music_id >> is_exist;
-						if (is_exist){
+						if (is_exist) {
 							json res;
 							res["MusicId"] = music_id;
 							global::db::orzmic << "select id, alias from alias where music_id = ?;"
@@ -338,7 +357,8 @@ void self::router::OrzmicRouter::router() {
 							result["Contents"].push_back(res);
 						}
 					};
-				} else {
+				}
+				else {
 					std::int32_t music_id = std::stoi(key);
 					global::db::orzmic << "select id, alias from alias where music_id = ?;"
 						<< music_id
@@ -352,7 +372,8 @@ void self::router::OrzmicRouter::router() {
 						result["Content"].emplace_back(data);
 					};
 				}
-			} else {
+			}
+			else {
 				throw self::HTTPException("this mode does not exist", 400);
 			}
 
@@ -451,7 +472,7 @@ void self::router::OrzmicRouter::router() {
 				if (data.count("hitsPerPage")) hitsPerPage = data.at("hitsPerPage").get<uint16_t>();
 				if (data.count("page")) page = data.at("page").get<uint16_t>();
 				if (data.count("showRankingScore")) showRankingScore = data.at("showRankingScore").get<bool>();
-				
+
 				json body{
 					{"q", query},
 					{"limit", limit},
@@ -473,7 +494,8 @@ void self::router::OrzmicRouter::router() {
 
 				if (response.status_code() < 400 and response.status_code() >= 200) {
 					resp = json::parse(response.extract_json().get().serialize());
-				} else {
+				}
+				else {
 					auto error = response.extract_string().get();
 					throw self::HTTPException(error, 500);
 				}
@@ -506,7 +528,387 @@ void self::router::OrzmicRouter::router() {
 			});
 	}
 
+	CROW_ROUTE((*m_app), "/api/orzmic/qrcodeDecode").methods(crow::HTTPMethod::Post)([&](const crow::request& req) {
+		return self::HandleResponseBody([&] {
+			LogSystem::logInfo("[Orzmic]解析数据");
+			auto accessControl{ getAccessControl(req.get_header_value("Authorization")) };
+			if (accessControl.authority < 1) {
+				LogSystem::logInfo(std::format("[Orzmic]解析失败 -- {}({})权限不足", accessControl.account, accessControl.sid));
+				throw self::HTTPException("", 401);
+			}
+			json data{ json::parse(req.body) };
+			std::exchange(data, data[0]);
 
+			json decodeJson, result;
+
+			if (data.count("b64QRcode")) {
+				std::string content{ data.at("b64QRcode").get<std::string>() };
+				if (content.empty()) {
+					throw self::HTTPException("'b64QRcode' is empty", 400);
+				}
+				cv::Mat qrcode{ base64ToGrayScaleMat(content) };
+
+				int width{ qrcode.cols }, height{ qrcode.rows };
+
+				auto image{ ZXing::ImageView(qrcode.data, width, height, ZXing::ImageFormat::Lum) };
+				ZXing::DecodeHints options{ ZXing::DecodeHints().setFormats(ZXing::BarcodeFormat::QRCode) };
+				auto results{ ZXing::ReadBarcodes(image, options) };
+
+				for (const auto& r : results) {
+					decodeJson = json::parse(r.text());
+				}
+
+				qrcode.release();
+			} elif(data.count("json")) {
+				std::string content{ data.at("json").get<std::string>() };
+				if (content.empty()) {
+					throw self::HTTPException("'json' is empty", 400);
+				}
+				decodeJson = json::parse(content);
+			}
+			else {
+				throw self::HTTPException("'json' or 'b64QRcode' is empty", 400);
+			}
+
+			if (decodeJson.is_null()) {
+				throw self::HTTPException("content is empty", 500);
+			}
+
+			{
+				result["Ver"] = decodeJson.at("Ver");
+				result["Name"] = decodeJson.at("Name");
+				result["Coin"] = decodeJson.at("Coin");
+				result["CharID"] = decodeJson.at("CharID");
+				result["CharSkinID"] = decodeJson.at("CharSkinID");
+				result["CharUnlock"] = decodeJson.at("CharUnlock");
+				result["Rat"] = decodeJson.at("Rat");
+				result["SPRat"] = decodeJson.at("SPRat");
+				result["Prog"] = decodeJson.at("Prog");
+			}
+
+			constexpr double MINIMUM_STANDARD_RATING{ 2.0 };
+			constexpr std::uint8_t GOLDEN{ 0 }, SILVER{ 1 }, NONE{ 2 };
+			constexpr std::uint8_t EZ{ 0 }, NR{ 1 }, HD{ 2 }, SP{ 3 };
+			constexpr std::uint8_t CLEAR_TYPE_THEORETICAL_VALUE{ 0 }, CLEAR_TYPE_Z{ 1 }, CLEAR_TYPE_OVER_SCORE{ 2 }, CLEAR_TYPE_FULL_COMBO{ 3 }, CLEAR_TYPE_CLEAR{ 4 };
+			for (auto& scoreJson : decodeJson.at("B30Scores")) {
+				std::istringstream issScores{ scoreJson.get<std::string>() };
+
+				std::vector<int> items;
+				{
+					std::string item;
+					while (std::getline(issScores, item, ',')) {
+						items.push_back(std::stoi(item));
+					}
+				}
+				int musicId{ items.at(0) }, // 对应的是曲目MusicID
+					difficulty{ items.at(1) }, // 0: EZ, 1: NR, 2:HD, 3:SP
+					score{ items.at(2) }, // 单曲得分
+					clearType{ items.at(3) }, // 0: 理论,1: 严判歌没有理论(Z),2: 超分(>=1000000),3 FC, 4 Clear
+					plusType{ items.at(4) }; // 0: golden plus, 1: silver plus, 2: not plus
+				// println(musicId, difficulty, score, clearType, plusType);
+
+				global::db::orzmic << "select * from songs where music_id = ?;" << musicId
+					>> [&](__ORZMIC_SQL_ARGS) {
+					std::string evaluate{ "F" }, plus_evaluate{ "none" };
+					int evaluateType{ 9 };
+					json info{
+						{"MusicID", music_id},
+						{"FileName", file_name},
+						{"Title", title},
+						{"Lockhint", lock_hint},
+						{"InitialUnlock", initial_unlock},
+						{"Watermark", watermark},
+						{"Artist", artist},
+						{"CoverPainter", cover_painter},
+						{"BPMRange", bpm},
+						{"AudioPreviewFrom", audio_preview_from},
+						{"AudioPreviewTo", audio_preview_to},
+						{"ChartDesigner", nullptr},
+						{"Difficulty", nullptr},
+						{"NoteCount", nullptr},
+						{"Rating", nullptr}
+					};
+					double rating, rate{ 0.0 };
+
+					if (difficulty == EZ) {
+						if (chart_designer_easy) info["ChartDesigner"] = *chart_designer_easy;
+						if (difficulty_easy) info["Difficulty"] = *difficulty_easy;
+						if (note_count_easy) info["NoteCount"] = *note_count_easy;
+						if (rating_easy) rating = *rating_easy;
+					} elif(difficulty == NR) {
+						if (chart_designer_normal) info["ChartDesigner"] = *chart_designer_normal;
+						if (difficulty_normal) info["Difficulty"] = *difficulty_normal;
+						if (note_count_normal) info["NoteCount"] = *note_count_normal;
+						if (rating_normal) rating = *rating_normal;
+					} elif(difficulty == HD) {
+						if (chart_designer_hard) info["ChartDesigner"] = *chart_designer_hard;
+						if (difficulty_hard) info["Difficulty"] = *difficulty_hard;
+						if (note_count_hard) info["NoteCount"] = *note_count_hard;
+						if (rating_hard) rating = *rating_hard;
+					} elif(difficulty == SP) {
+						if (chart_designer_special) info["ChartDesigner"] = *chart_designer_special;
+						if (difficulty_special) info["Difficulty"] = *difficulty_special;
+						if (note_count_special) info["NoteCount"] = *note_count_special;
+						if (rating_special) rating = *rating_special;
+					}
+					info["Rating"] = rating;
+
+					if (clearType == CLEAR_TYPE_THEORETICAL_VALUE) {
+						rate += rating + 2.2;
+					} elif(score > OVER_SCORE) {
+						rate += rating + 2.1;
+					} elif(score == OVER_SCORE) {
+						rate += rating + 2.0;
+					} elif(score >= S_SCORE) {
+						constexpr int DIVISOR{ 20000 };
+						rate += rating + 1.0 + static_cast<double>(static_cast<double>(score - S_SCORE) / DIVISOR);
+					} elif(score >= A_SCORE) {
+						constexpr int DIVISOR{ 50000 };
+						rate += rating + 0.4 + static_cast<double>(static_cast<double>(score - A_SCORE) / DIVISOR);
+					} elif(score >= B_SCORE) {
+						constexpr int DIVISOR{ 125000 };
+						rate += rating + static_cast<double>(static_cast<double>(score - B_SCORE) / DIVISOR);
+					} elif(score >= FAILURE_SCORE and self::common::utils::compareDecimal(rating, MINIMUM_STANDARD_RATING) >= 0) {
+						constexpr int DIVISOR{ 100000 };
+						rate += rating - MINIMUM_STANDARD_RATING + static_cast<double>(static_cast<double>(score - FAILURE_SCORE) / DIVISOR);
+					} elif(score >= FAILURE_SCORE) {
+						constexpr int DIVISOR{ 200000 };
+						rate += rating + static_cast<double>(static_cast<double>(score - FAILURE_SCORE) / DIVISOR);
+					}
+
+					// golden and silver plus ++
+					if (plusType == GOLDEN){
+						plus_evaluate = "golden";
+						if (score >= OVER_SCORE)rate += 0.1;
+						else rate += 0.05;
+					} elif (plusType == SILVER){
+						plus_evaluate = "silver";
+						if (score >= OVER_SCORE)rate += 0.05;
+						else rate += 0.02;
+					}
+					/* 
+					elif(plusType == NONE) {
+						plus_evaluate = "none";
+						rate += 0.0;
+					}
+					*/
+
+					constexpr int GRADE_S{ 975000 }, GRADE_A{ 940000 }, GRADE_B{ 900000 }, GRADE_C{ 850000 }, GRADE_D{ 800000 };
+					if (clearType == CLEAR_TYPE_THEORETICAL_VALUE){
+						evaluateType = 0;
+						evaluate = "ORZ";
+					} elif(clearType == CLEAR_TYPE_Z) {
+						evaluateType = 1;
+						evaluate = "Z";
+					} elif(score > OVER_SCORE) {
+						evaluateType = 2;
+						evaluate = "R";
+					} elif(score == OVER_SCORE) {
+						evaluateType = 3;
+						evaluate = "O";
+					} elif(score >= GRADE_S) {
+						evaluateType = 4;
+						evaluate = "S";
+					} elif(score >= GRADE_A) {
+						evaluateType = 5;
+						evaluate = "A";
+					} elif(score >= GRADE_B) {
+						evaluateType = 6;
+						evaluate = "B";
+					} elif(score >= GRADE_C) {
+						evaluateType = 7;
+						evaluate = "C";
+					} elif(score >= GRADE_D) {
+						evaluateType = 8;
+						evaluate = "D";
+					}
+					/*
+					else {
+						evaluateType = 9;
+						evaluate = "F";
+					}
+					*/
+
+					info["Evaluate"] = evaluate;
+					info["EvaluateType"] = evaluateType;
+					info["PlusEvaluate"] = plus_evaluate;
+					info["PlusType"] = plusType;
+					info["Score"] = score;
+					info["ClearType"] = clearType;
+					info["Rate"] = rate;
+					info["SpecialLevel"] = json::parse(extra_content).at("SpecialLevel").at(difficulty);
+					result["B30Score"].push_back(info);
+				};
+			}
+			for (auto& scoreJson : decodeJson.at("SPScores")) {
+				std::istringstream issScores{ scoreJson.get<std::string>() + ",2"};
+
+				std::vector<int> items;
+				{
+					std::string item;
+					while (std::getline(issScores, item, ',')) {
+						items.push_back(std::stoi(item));
+					}
+				}
+
+				int musicId{ items.at(0) }, // 对应的是曲目MusicID
+					difficulty{ items.at(1) }, // 0: EZ, 1: NR, 2:HD, 3:SP
+					score{ items.at(2) }, // 单曲得分
+					clearType{ items.at(3) }, // 0: 理论,1: 严判歌没有理论(Z),2: 超分(>=1000000),3 FC, 4 Clear
+					plusType{ items.at(4) }; // 0: golden plus, 1: silver plus, 2: not plus
+				// println(musicId, difficulty, score, clearType, plusType);
+
+				global::db::orzmic << "select * from songs where music_id = ?;" << musicId
+					>> [&](__ORZMIC_SQL_ARGS) {
+					std::string evaluate{ "F" }, plus_evaluate{ "none" };
+					int evaluateType{ 9 };
+					json info{
+						{"MusicID", music_id},
+						{"FileName", file_name},
+						{"Title", title},
+						{"Lockhint", lock_hint},
+						{"InitialUnlock", initial_unlock},
+						{"Watermark", watermark},
+						{"Artist", artist},
+						{"CoverPainter", cover_painter},
+						{"BPMRange", bpm},
+						{"AudioPreviewFrom", audio_preview_from},
+						{"AudioPreviewTo", audio_preview_to},
+						{"ChartDesigner", nullptr},
+						{"Difficulty", nullptr},
+						{"NoteCount", nullptr},
+						{"Rating", nullptr}
+					};
+					double rating, rate{ 0.0 };
+
+					if (difficulty == EZ) {
+						if (chart_designer_easy) info["ChartDesigner"] = *chart_designer_easy;
+						if (difficulty_easy) info["Difficulty"] = *difficulty_easy;
+						if (note_count_easy) info["NoteCount"] = *note_count_easy;
+						if (rating_easy) rating = *rating_easy;
+					} elif(difficulty == NR) {
+						if (chart_designer_normal) info["ChartDesigner"] = *chart_designer_normal;
+						if (difficulty_normal) info["Difficulty"] = *difficulty_normal;
+						if (note_count_normal) info["NoteCount"] = *note_count_normal;
+						if (rating_normal) rating = *rating_normal;
+					} elif(difficulty == HD) {
+						if (chart_designer_hard) info["ChartDesigner"] = *chart_designer_hard;
+						if (difficulty_hard) info["Difficulty"] = *difficulty_hard;
+						if (note_count_hard) info["NoteCount"] = *note_count_hard;
+						if (rating_hard) rating = *rating_hard;
+					} elif(difficulty == SP) {
+						if (chart_designer_special) info["ChartDesigner"] = *chart_designer_special;
+						if (difficulty_special) info["Difficulty"] = *difficulty_special;
+						if (note_count_special) info["NoteCount"] = *note_count_special;
+						if (rating_special) rating = *rating_special;
+					}
+					info["Rating"] = rating;
+
+					if (clearType == CLEAR_TYPE_THEORETICAL_VALUE) {
+						rate += rating + 2.2;
+					} elif(score > OVER_SCORE) {
+						rate += rating + 2.1;
+					} elif(score == OVER_SCORE) {
+						rate += rating + 2.0;
+					} elif(score >= S_SCORE) {
+						constexpr int DIVISOR{ 20000 };
+						rate += rating + 1.0 + static_cast<double>(static_cast<double>(score - S_SCORE) / DIVISOR);
+					} elif(score >= A_SCORE) {
+						constexpr int DIVISOR{ 50000 };
+						rate += rating + 0.4 + static_cast<double>(static_cast<double>(score - A_SCORE) / DIVISOR);
+					} elif(score >= B_SCORE) {
+						constexpr int DIVISOR{ 125000 };
+						rate += rating + static_cast<double>(static_cast<double>(score - B_SCORE) / DIVISOR);
+					} elif(score >= FAILURE_SCORE and self::common::utils::compareDecimal(rating, MINIMUM_STANDARD_RATING) >= 0) {
+						constexpr int DIVISOR{ 100000 };
+						rate += rating - MINIMUM_STANDARD_RATING + static_cast<double>(static_cast<double>(score - FAILURE_SCORE) / DIVISOR);
+					} elif(score >= FAILURE_SCORE) {
+						constexpr int DIVISOR{ 200000 };
+						rate += rating + static_cast<double>(static_cast<double>(score - FAILURE_SCORE) / DIVISOR);
+					}
+
+					// golden and silver plus ++
+					if (plusType == GOLDEN){
+						plus_evaluate = "golden";
+						if (score >= OVER_SCORE)rate += 0.1;
+						else rate += 0.05;
+					} elif (plusType == SILVER){
+						plus_evaluate = "silver";
+						if (score >= OVER_SCORE)rate += 0.05;
+						else rate += 0.02;
+					}
+					/* 
+					elif(plusType == NONE) {
+						plus_evaluate = "none";
+						rate += 0.0;
+					}
+					*/
+
+					constexpr int GRADE_S{ 975000 }, GRADE_A{ 940000 }, GRADE_B{ 900000 }, GRADE_C{ 850000 }, GRADE_D{ 800000 };
+					if (clearType == CLEAR_TYPE_THEORETICAL_VALUE) {
+						evaluateType = 0;
+						evaluate = "ORZ";
+					} elif(clearType == CLEAR_TYPE_Z) {
+						evaluateType = 1;
+						evaluate = "Z";
+					} elif(score > OVER_SCORE) {
+						evaluateType = 2;
+						evaluate = "R";
+					} elif(score == OVER_SCORE) {
+						evaluateType = 3;
+						evaluate = "O";
+					} elif(score >= GRADE_S) {
+						evaluateType = 4;
+						evaluate = "S";
+					} elif(score >= GRADE_A) {
+						evaluateType = 5;
+						evaluate = "A";
+					} elif(score >= GRADE_B) {
+						evaluateType = 6;
+						evaluate = "B";
+					} elif(score >= GRADE_C) {
+						evaluateType = 7;
+						evaluate = "C";
+					} elif(score >= GRADE_D) {
+						evaluateType = 8;
+						evaluate = "D";
+					}
+					/*
+					else {
+						evaluateType = 9;
+						evaluate = "F";
+					}
+					*/
+
+					info["Evaluate"] = evaluate;
+					info["EvaluateType"] = evaluateType;
+					info["PlusEvaluate"] = plus_evaluate;
+					info["PlusType"] = plusType;
+					info["Score"] = score;
+					info["ClearType"] = clearType;
+					info["Rate"] = rate;
+					info["SpecialLevel"] = json::parse(extra_content).at("SpecialLevel").at(difficulty);
+					result["SpecialScores"].push_back(info);
+				};
+			}
+
+			if (result["B30Score"].is_null())result["B30Score"] = json::parse("[]");
+			if (result["SpecialScores"].is_null())result["SpecialScores"] = json::parse("[]");
+
+			/*
+			int32_t musicId{ decodeJson.at("music_id").get<std::string>() };
+
+			global::db::orzmic << "select * from songs where music_id = ?;" <<
+				>> [&](__ORZMIC_SQL_ARGS) {
+			};
+
+			println(decodeJson);
+			*/
+
+			LogSystem::logInfo("[Orzmic]解析数据完成");
+			return result.dump();
+			});
+		});
 }
 
 /*

@@ -173,7 +173,25 @@ namespace services::orzmic {
 				info["Score"] = score;
 				info["ClearType"] = clearType;
 				info["Rate"] = rate;
-				info["SpecialLevel"] = json::parse(extra_content).at("SpecialLevel").at(difficulty);
+				info["Level"] = difficulty;
+				
+				std::string LevelNameStr{};
+				json LevelName{ json::parse(extra_content).at("SpecialLevel").at(difficulty) };
+				if (not LevelName.is_null()){
+					if (difficulty == EZ) {
+						LevelNameStr = "EZ";
+					} elif (difficulty == NR) {
+						LevelNameStr = "NR";
+					} elif (difficulty == HD) {
+						LevelNameStr = "HD";
+					} elif (difficulty == SP) {
+						LevelNameStr = "SP";
+					}
+				} else {
+					LevelNameStr = LevelName.get<std::string>();
+				}
+				
+				info["LevelName"] = LevelNameStr;
 				data[addName].push_back(info);
 			};
 		}

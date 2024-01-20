@@ -605,6 +605,101 @@ void self::router::OrzmicRouter::router() {
 			return result.dump();
 			});
 		});
+
+	CROW_ROUTE((*m_app), "/api/orzmic/getRating").methods(crow::HTTPMethod::Post)([&](const crow::request& req) {
+		return self::HandleResponseBody([&] {
+			LogSystem::logInfo("[Orzmic]取某个定数区间的数据");
+			auto accessControl{ getAccessControl(req.get_header_value("Authorization")) };
+			if (accessControl.authority < 1) {
+				LogSystem::logInfo(std::format("[Orzmic]获取定数区间数据失败 -- {}({})权限不足", accessControl.account, accessControl.sid));
+				throw self::HTTPException("", 401);
+			}
+
+			json data{ json::parse(req.body) }, result;
+			std::exchange(data, data[0]);
+
+			double rating1{}, rating2{};
+
+			if (data.count("rating1")) {
+				rating1 = data.at("rating1").get<double>();
+			}
+			else throw self::HTTPException("request body missing 'rating1'", 400);
+
+			if (data.count("rating2")) {
+				rating2 = data.at("rating2").get<double>();
+			}
+			else rating2 = rating1;
+
+			for (double rating{ rating1 }; rating < rating2 + 0.01; rating += 0.1) {
+				std::string musicRating { self::common::utils::retainDecimalPlaces(rating, 1) };
+				std::string matchLevel{ std::format(R"(SELECT music_id,file_name,
+  CASE
+    WHEN rating_easy BETWEEN {0} AND {1} THEN 'easy'
+    WHEN rating_normal BETWEEN {0} AND {1} THEN 'normal'
+    WHEN rating_hard BETWEEN {0} AND {1} THEN 'hard'
+    WHEN rating_special BETWEEN {0} AND {1} THEN 'special'
+  END AS level
+FROM songs
+WHERE 
+  rating_easy BETWEEN {0} AND {1} OR 
+  rating_normal BETWEEN {0} AND {1} OR 
+  rating_hard BETWEEN {0} AND {1} OR 
+  rating_special BETWEEN {0} AND {1};
+)", rating - 0.01f, rating + 0.01f) };
+				global::db::orzmic << matchLevel
+					>> [&](int musicId, std::string fileName, std::string level) {
+					std::string sql_command{ std::format(R"(select title, lock_hint, initial_unlock, watermark,
+artist, cover_painter, bpm, audio_preview_from, audio_preview_to, 
+chart_designer_{0}, difficulty_{0}, note_count_{0}, rating_{0},
+extra_content from songs where music_id = ?;)", level) };
+					auto levelNum{ services::orzmic::getLevelNum(level) };
+					global::db::orzmic << sql_command << musicId >> [&](
+						std::string title, int32_t lock_hint, bool initial_unlock, bool watermark,
+						std::string artist, std::string cover_painter, std::string bpm,
+						uint32_t audio_preview_from, uint32_t audio_preview_to,
+						std::unique_ptr<std::string> chart_designer, std::unique_ptr<std::string> difficulty,
+						std::unique_ptr<int> note_count, std::unique_ptr<double> rat, std::string extra_content) {
+							level[0] = std::toupper(level[0]);
+							json info{
+								{"MusicId", musicId},
+								{"FileName", fileName},
+								{"Title", title},
+								{"LockHint", lock_hint},
+								{"InitialUnlock", initial_unlock},
+								{"Watermark", watermark},
+								{"Artist", artist},
+								{"CoverPainter", cover_painter},
+								{"BPM", bpm},
+								{"AudioPreviewFrom", audio_preview_from},
+								{"AudioPreviewTo", audio_preview_to},
+								{"ChartDesigner", nullptr},
+								{"Difficulty", nullptr},
+								{"NoteCount", nullptr},
+								{"Rating", nullptr},
+								{"Level", level},
+								{"LevelNum", levelNum},
+							};
+
+							if (chart_designer) info["ChartDesigner"] = *chart_designer;
+							if (difficulty) info["Difficulty"] = *difficulty;
+							if (note_count) info["NoteCount"] = *note_count;
+							if (rat) info["Rating"] = *rat;
+
+							json extraLevel{ json::parse(extra_content) };
+							std::exchange(extraLevel, extraLevel[0]["SpecialLevel"]);
+							if (not extraLevel[levelNum].is_null()) {
+								info["Level"] = extraLevel[levelNum].get<std::string>();
+							}
+
+							result[musicRating].push_back(info);
+					};
+				};
+			}
+			if (result.is_null()) result = json::parse("[]");
+			LogSystem::logInfo("[Orzmic]获取定数区间数据完成");
+			return result.dump();
+			});
+		});
 }
 
 /*

@@ -196,6 +196,23 @@ namespace services::orzmic {
 			};
 		}
 	}
+
+	inline int getLevelNum(std::string level) {
+		int levelNum{ -1 };
+		if (level == "easy") {
+			levelNum = 0;
+		} elif(level == "normal") {
+			levelNum = 1;
+		} elif(level == "hard") {
+			levelNum = 2;
+		} elif(level == "special") {
+			levelNum = 3;
+		}
+		else {
+			levelNum = -1;
+		}
+		return levelNum;
+	};
 }
 
 #endif // !__CXX20_ORZMIC_SERVICE_HPP

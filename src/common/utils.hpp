@@ -115,7 +115,18 @@ namespace self{
             }
             return randomStr;
         }
-    
+
+        /// <summary>
+        /// 保留浮点数后N位
+        /// </summary>
+        /// <param name="f">数字</param>
+        /// <param name="n">保留多少位</param>
+        /// <returns></returns>
+        inline std::string retainDecimalPlaces(double f, int n = 2) {
+            std::stringstream ss;
+            ss << std::fixed << std::setprecision(n) << f;
+            return ss.str();
+        };
 
         /// <summary>
         /// 判断vector<string>是否存在特定值

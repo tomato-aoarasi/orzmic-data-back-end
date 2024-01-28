@@ -50,30 +50,32 @@ namespace services::orzmic {
 					{"NoteCount", nullptr},
 					{"Rating", nullptr}
 				};
+				int noteCount{ 0 };
 				double rating, rate{ 0.0 };
 
 				if (difficulty == EZ) {
 					if (chart_designer_easy) info["ChartDesigner"] = *chart_designer_easy;
 					if (difficulty_easy) info["Difficulty"] = *difficulty_easy;
-					if (note_count_easy) info["NoteCount"] = *note_count_easy;
+					if (note_count_easy) noteCount = *note_count_easy;
 					if (rating_easy) rating = *rating_easy;
 				} elif(difficulty == NR) {
 					if (chart_designer_normal) info["ChartDesigner"] = *chart_designer_normal;
 					if (difficulty_normal) info["Difficulty"] = *difficulty_normal;
-					if (note_count_normal) info["NoteCount"] = *note_count_normal;
+					if (note_count_normal) noteCount = *note_count_normal;
 					if (rating_normal) rating = *rating_normal;
 				} elif(difficulty == HD) {
 					if (chart_designer_hard) info["ChartDesigner"] = *chart_designer_hard;
 					if (difficulty_hard) info["Difficulty"] = *difficulty_hard;
-					if (note_count_hard) info["NoteCount"] = *note_count_hard;
+					if (note_count_hard) noteCount = *note_count_hard;
 					if (rating_hard) rating = *rating_hard;
 				} elif(difficulty == SP) {
 					if (chart_designer_special) info["ChartDesigner"] = *chart_designer_special;
 					if (difficulty_special) info["Difficulty"] = *difficulty_special;
-					if (note_count_special) info["NoteCount"] = *note_count_special;
+					if (note_count_special) noteCount = *note_count_special;
 					if (rating_special) rating = *rating_special;
 				}
 				info["Rating"] = rating;
+				info["NoteCount"] = noteCount;
 
 				if (clearType == CLEAR_TYPE_THEORETICAL_VALUE) {
 					rate += rating + 2.2;
@@ -132,7 +134,7 @@ namespace services::orzmic {
 				if (clearType == CLEAR_TYPE_THEORETICAL_VALUE) {
 					evaluateType = 0;
 					evaluate = "ORZ";
-				} elif(clearType == CLEAR_TYPE_Z) {
+				} elif((score < (OVER_SCORE + noteCount)) and (score >= (OVER_SCORE + static_cast<int>(noteCount * 0.8)))) {
 					evaluateType = 1;
 					evaluate = "Z";
 				} elif(score > OVER_SCORE) {
@@ -179,13 +181,13 @@ namespace services::orzmic {
 				json LevelName{ json::parse(extra_content).at("SpecialLevel").at(difficulty) };
 				if (not LevelName.is_null()){
 					if (difficulty == EZ) {
-						LevelNameStr = "EZ";
+						LevelNameStr = "Easy";
 					} elif (difficulty == NR) {
-						LevelNameStr = "NR";
+						LevelNameStr = "Normal";
 					} elif (difficulty == HD) {
-						LevelNameStr = "HD";
+						LevelNameStr = "Hard";
 					} elif (difficulty == SP) {
-						LevelNameStr = "SP";
+						LevelNameStr = "Special";
 					}
 				} else {
 					LevelNameStr = LevelName.get<std::string>();

@@ -77,7 +77,7 @@ namespace services::orzmic {
 				info["Rating"] = rating;
 				info["NoteCount"] = noteCount;
 
-				if (clearType == CLEAR_TYPE_THEORETICAL_VALUE) {
+				if (score >= (OVER_SCORE + noteCount) /*clearType == CLEAR_TYPE_THEORETICAL_VALUE*/) {
 					rate += rating + 2.2;
 				} elif(score > OVER_SCORE) {
 					rate += rating + 2.1;
@@ -131,7 +131,7 @@ namespace services::orzmic {
 				 */
 
 				constexpr int GRADE_S{ S_SCORE }, GRADE_A{ A_SCORE }, GRADE_B{ B_SCORE }, GRADE_C{ 850000 }, GRADE_D{ 800000 };
-				if (clearType == CLEAR_TYPE_THEORETICAL_VALUE) {
+				if (score >= (OVER_SCORE + noteCount) /*clearType == CLEAR_TYPE_THEORETICAL_VALUE*/) {
 					evaluateType = 0;
 					evaluate = "ORZ";
 				} elif((score < (OVER_SCORE + noteCount)) and (score >= (OVER_SCORE + static_cast<int>(noteCount * 0.8)))) {
